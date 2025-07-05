@@ -19,7 +19,7 @@ program "Extracción de estadísticas diarias de productos por centro de consumo
     //#region >CONSTANTES
     do errordet(@false)
 
-    @_action_id = ""
+    @_action_id = "EAF0"
     @default_table_name = "st_producto_cc"
     @convertir_a_divisa_producto = 1
     @convertir_a_divisa_documento = 2
@@ -791,7 +791,7 @@ program "Extracción de estadísticas diarias de productos por centro de consumo
 
     function ValidateParams(&params)
     {
-        da = abs(@@(params,"#da"))
+        da = trun(abs(@@(params,"#da")))
         fi = DateFormat(@@(params,"$fi"),"yyyy-MM-dd")
         ff = DateFormat(@@(params,"$ff"),"yyyy-MM-dd")
         cl = trim(@@(params,"$cl"))

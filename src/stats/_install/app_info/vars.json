@@ -1,0 +1,17 @@
+[
+    {
+        "id": "stats",
+        "caption": "Estadísticas",
+        "help": "Variables del paquete: stats",
+        "vars": [
+            {
+                "varname": "tbn_st_producto_cc",
+                "vardefault": "st_producto_cc",
+                "varvalue": "st_producto_cc",
+                "varcaption": "Tabla de estadísticas por producto",
+                "varhelp": "Nombre de la tabla donde se guardan las estadísticas diarias de productos por centro de consumo.",
+                "vartype": "string"
+            }
+        ]
+    }
+]

@@ -1,0 +1,4 @@
+﻿itemid,description,itemparent
+stats,Recopilación de estadísticas,\0
+stats.st-producto-cc,Estadísticas de productos por centro de consumo,stats
+EAF0,Extracción de estadísticas,stats.st-producto-cc

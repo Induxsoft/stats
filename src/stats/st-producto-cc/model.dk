@@ -73,7 +73,7 @@ module "Estadísticas de productos por centro de consumo :st.producto.cc"
                     OR nombre LIKE CONCAT('%',@search,'%')
                     OR notas LIKE CONCAT('%',@search,'%')
                 )
-            ORDER BY codigo
+            ORDER BY nombre
         ",params)
     }
 

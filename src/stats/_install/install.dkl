@@ -23,7 +23,7 @@ program "instalador"
     *    - importar.productos.dkl -> Archivo de programa
     *    - importar.productos.json -> Configuración de parámetros del archivo de programas
     */
-    @jobs_group_id = ""
+    @jobs_group_id = "EA"
     
     /*************************************************************************************/
     #include "v12.install.lib.dk"

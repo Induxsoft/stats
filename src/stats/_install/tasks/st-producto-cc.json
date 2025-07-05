@@ -1,7 +1,7 @@
 {
     "fi": {
         "control":"date",
-        "caption":"Desde:",
+        "caption":"Desde:*",
         "wrp_attr": {
             "class":"col-sm-6 col-md-4",
             "title":"Fecha de inicio de recopilación de datos."
@@ -9,7 +9,7 @@
     },
     "ff": {
         "control":"date",
-        "caption":"Hasta:",
+        "caption":"Hasta:*",
         "wrp_attr": {
             "class":"col-sm-6 col-md-4",
             "title":"Fecha final de recopilación de datos."
@@ -17,7 +17,7 @@
     },
     "da": {
         "control":"number",
-        "caption":"Hoy -(n)días:",
+        "caption":"Hoy -(n)días:*",
         "wrp_attr": {
             "class":"col-sm-4",
             "title":"Número de días anteriores a 'hoy'."
@@ -42,7 +42,7 @@
         "caption":"Línea:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-linea&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-linea&search=@search",
             "keyfield":"codigo",
             "searchfield":"codigo",
             "showfield":"descripcion",
@@ -59,7 +59,7 @@
         "caption":"Marca:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-marca&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-marca&search=@search",
             "keyfield":"codigo",
             "searchfield":"codigo",
             "showfield":"descripcion",
@@ -76,7 +76,7 @@
         "caption":"Departamento:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-depto&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-depto&search=@search",
             "keyfield":"codigo",
             "searchfield":"codigo",
             "showfield":"descripcion",
@@ -93,7 +93,7 @@
         "caption":"Grupo:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-gpproductos&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-gpproductos&search=@search",
             "keyfield":"nombre",
             "searchfield":"nombre",
             "showfield":"notas",
@@ -110,7 +110,7 @@
         "caption":"C. Consumo:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-cconsumo&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-cconsumo&search=@search",
             "keyfield":"codigo",
             "searchfield":"codigo",
             "showfield":"descripcion",
@@ -127,7 +127,7 @@
         "caption":"Producto:",
         "source": {
             "type":"service",
-            "source":"/!/stat/st-producto-cc/?_act=buscar-producto&search=@search",
+            "source":"/!/stats/st-producto-cc/?_act=buscar-producto&search=@search",
             "keyfield":"codigo",
             "searchfield":"codigo",
             "showfield":"descripcion",
