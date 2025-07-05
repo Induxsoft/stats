@@ -1,0 +1,121 @@
+#include "dkli.dkh"
+#!
+module "Estadísticas de productos por centro de consumo :st.producto.cc"
+{
+    @table_name = ""
+    @default_table_name = "st_producto_cc"
+
+    function setTablename(&db)
+    {
+        tbn_st_producto_cc = dbr.vars.getd(db,"tbn_st_producto_cc",@default_table_name)
+        if tbn_st_producto_cc == "" { tbn_st_producto_cc = @default_table_name }
+
+        @table_name = tbn_st_producto_cc
+    }
+
+    function buscarLinea(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, clase, codigo, descripcion
+            FROM linea
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR codigo = @search
+                    OR descripcion LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    function buscarMarca(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, codigo, descripcion
+            FROM marca
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR codigo = @search
+                    OR descripcion LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    function buscarDepto(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, codigo, descripcion
+            FROM departamento
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR codigo = @search
+                    OR descripcion LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    function buscarGrupoProductos(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, nombre, notas
+            FROM grupoproductos
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR nombre LIKE CONCAT('%',@search,'%')
+                    OR notas LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    function buscarCentroConsumo(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, codigo, descripcion, notas, ialmacen
+            FROM cconsumo
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR codigo = @search
+                    OR descripcion LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    function buscarProducto(&db,&params)
+    {
+        return dbr.list(db,"
+            SELECT sys_pk, codigo, descripcion
+            FROM producto
+            WHERE
+                NOT IFNULL(sys_deleted,0)
+                AND iclase > 1 AND iclase < 7
+                AND (
+                    @search = '' OR @search = '*' OR CONVERT(@search,DECIMAL) = -1
+                    OR codigo = @search
+                    OR descripcion LIKE CONCAT('%',@search,'%')
+                )
+            ORDER BY codigo
+        ",params)
+    }
+
+    NotImplemented1::&db,&params
+    {
+        do rise_error(500,"Acción no implementada")
+    }
+    NotImplemented2::&db,&params,&data
+    {
+        do rise_error(500,"Acción no implementada")
+    }
+}

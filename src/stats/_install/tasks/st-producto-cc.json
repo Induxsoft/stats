@@ -1,0 +1,142 @@
+{
+    "fi": {
+        "control":"date",
+        "caption":"Desde:",
+        "wrp_attr": {
+            "class":"col-sm-6 col-md-4",
+            "title":"Fecha de inicio de recopilación de datos."
+        }
+    },
+    "ff": {
+        "control":"date",
+        "caption":"Hasta:",
+        "wrp_attr": {
+            "class":"col-sm-6 col-md-4",
+            "title":"Fecha final de recopilación de datos."
+        }
+    },
+    "da": {
+        "control":"number",
+        "caption":"Hoy -(n)días:",
+        "wrp_attr": {
+            "class":"col-sm-4",
+            "title":"Número de días anteriores a 'hoy'."
+        }
+    },
+    "cl": {
+        "control":"select",
+        "caption":"Clase:",
+        "source": {
+            "type":"query",
+            "query":"select id, const from cclaseproducto where id > 1 and id < 7",
+            "keyfield":"const", "showfield":"const",
+            "first_value":"*", "first_text":"Todos"
+        },
+        "wrp_attr": {
+            "class":"col-sm-8 col-md-6",
+            "title":"Clase de producto que puede venderse."
+        }
+    },
+    "ln": {
+        "control":"input-key",
+        "caption":"Línea:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-linea&search=@search",
+            "keyfield":"codigo",
+            "searchfield":"codigo",
+            "showfield":"descripcion",
+            "columns":"codigo,descripcion",
+            "ccaptions":"Código,Descripción"
+        },
+        "wrp_attr": {
+            "class":"col-md-6",
+            "title":"Código de una línea de productos."
+        }
+    },
+    "mr": {
+        "control":"input-key",
+        "caption":"Marca:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-marca&search=@search",
+            "keyfield":"codigo",
+            "searchfield":"codigo",
+            "showfield":"descripcion",
+            "columns":"codigo,descripcion",
+            "ccaptions":"Código,Descripción"
+        },
+        "wrp_attr": {
+            "class":"col-md-6",
+            "title":"Código de una marca de productos."
+        }
+    },
+    "dp": {
+        "control":"input-key",
+        "caption":"Departamento:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-depto&search=@search",
+            "keyfield":"codigo",
+            "searchfield":"codigo",
+            "showfield":"descripcion",
+            "columns":"codigo,descripcion",
+            "ccaptions":"Código,Descripción"
+        },
+        "wrp_attr": {
+            "class":"col-md-6",
+            "title":"Código de un departamento de productos."
+        }
+    },
+    "gp": {
+        "control":"input-key",
+        "caption":"Grupo:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-gpproductos&search=@search",
+            "keyfield":"nombre",
+            "searchfield":"nombre",
+            "showfield":"notas",
+            "columns":"nombre,notas",
+            "ccaptions":"Nombre,Notas"
+        },
+        "wrp_attr": {
+            "class":"col-md-6",
+            "title":"Nombre de un grupo de productos."
+        }
+    },
+    "cc": {
+        "control":"input-key",
+        "caption":"C. Consumo:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-cconsumo&search=@search",
+            "keyfield":"codigo",
+            "searchfield":"codigo",
+            "showfield":"descripcion",
+            "columns":"codigo,descripcion",
+            "ccaptions":"Código,Descripción"
+        },
+        "wrp_attr": {
+            "class":"col-md-6",
+            "title":"Código de un centro de consumo."
+        }
+    },
+    "sku": {
+        "control":"input-key",
+        "caption":"Producto:",
+        "source": {
+            "type":"service",
+            "source":"/!/stat/st-producto-cc/?_act=buscar-producto&search=@search",
+            "keyfield":"codigo",
+            "searchfield":"codigo",
+            "showfield":"descripcion",
+            "columns":"codigo,descripcion",
+            "ccaptions":"Código,Descripción"
+        },
+        "wrp_attr": {
+            "class":"col-12",
+            "title":"Código de un producto."
+        }
+    }
+}

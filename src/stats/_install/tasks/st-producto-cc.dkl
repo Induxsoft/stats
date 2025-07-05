@@ -1,0 +1,868 @@
+#include "dkli.dkh"
+#!
+program "Extracción de estadísticas diarias de productos por centro de consumo"
+{
+    #include "functions.dkh"
+    #include "serialize.dkh"
+    #include "dbr.dkh"
+    
+    if isset("@batch_context")
+    {
+        #include "dbr.apps.dkl"
+        #include "dbr.security.dkl"
+        #include "dbr.vars.dkl"
+        #include "batch.v12.dkl"
+
+        do @context.begin(@batch_context)
+    }
+
+    //#region >CONSTANTES
+    do errordet(@false)
+
+    @_action_id = ""
+    @default_table_name = "st_producto_cc"
+    @convertir_a_divisa_producto = 1
+    @convertir_a_divisa_documento = 2
+    // cdocumentos (tipos de documentos comerciales)
+    @cCotizacion = 1
+    @cPedido = 2
+    @cRemision = 3
+    @cFactura = 4
+    @cNotaCredito = 5
+    @cTicket = 6
+    @cNotaCargo = 17
+    @cDeposito = 65
+    @cRetiro = 67
+
+    @_sql_create_table = "
+    CREATE TABLE IF NOT EXISTS `#<tablename>` (
+        `sys_dtcreated` DATETIME NOT NULL /*!50605 DEFAULT CURRENT_TIMESTAMP */ COMMENT 'Fecha de creación del registro de estadística',
+        `sys_timestamp` DATETIME NOT NULL /*!50605 DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP */ COMMENT 'Fecha de actualización de la estadística',
+        
+        `cc` VARCHAR(5) NOT NULL COMMENT 'Código de centro de consumo',
+        `fecha` DATE NOT NULL COMMENT 'Fecha (día de la estadística)',
+        `sku` VARCHAR(35) NOT NULL COMMENT 'Código del producto',
+        `unidad` VARCHAR(10) NOT NULL COMMENT 'Unidad estándar del producto',
+        `divisa` VARCHAR(5) NOT NULL COMMENT 'Código de la divisa del producto (todos los importes en esta divisa)',
+        `descripcion` TEXT,
+        
+        `existencia` INT(11) DEFAULT 0 COMMENT 'Existencia total en ese día',
+        `entradas` INT(11) DEFAULT 0 COMMENT 'Entradas de almacén en el día',
+        `salidas` INT(11) DEFAULT 0 COMMENT 'Salidas de almacén en el día',
+        `cargos` DECIMAL(18,8) DEFAULT 0 COMMENT 'Costo de todas las entradas del día',
+        `abonos` DECIMAL(18,8) DEFAULT 0 COMMENT 'Costo de todas las salidas del día',
+        
+        `ventas` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades vendidas',
+        `costoventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Costo de las ventas del día',
+        `impventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de las ventas del día',
+        `impuestos_ventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de impuestos sobre ventas',
+        `devsventas` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades por devoluciones sobre ventas',
+        `costodevventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Costo de las devoluciones sobre ventas del día',
+        `impdevventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de las devoluciones sobre ventas',
+        `impuestos_devventas` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de impuestos por devoluciones sobre ventas',
+        `opventas` INT(11) DEFAULT 0 COMMENT 'Cantidad de operaciones de venta de este producto en el día',
+        `opclientes` INT(11) DEFAULT 0 COMMENT 'Cantidad de clientes que compraron este producto en el día',
+        `pedidos_por_surtir` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades por entregar (pedidos)',
+        
+        `compras` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades compradas',
+        `impcompras` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de las compras del día',
+        `impuestos_compras` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de impuestos sobre compras',
+        `devscompras` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades por devoluciones sobre compras',
+        `impdevcompras` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de las devoluciones sobre compras',
+        `impuestos_devcompras` DECIMAL(18,8) DEFAULT 0 COMMENT 'Importe de impuestos por devoluciones sobre compras',
+        `pedidos_por_llegar` INT(11) DEFAULT 0 COMMENT 'Cantidad de unidades por recibir (pedidos)',
+        
+        KEY `cc` (`cc`),
+        KEY `fecha` (`fecha`),
+        KEY `sku` (`sku`),
+        UNIQUE KEY `uk_producto_cc` (`cc`,`fecha`,`sku`,`unidad`,`divisa`)
+    )
+    ENGINE=InnoDB
+    DEFAULT CHARSET=latin1
+    COLLATE='latin1_swedish_ci'
+    ;"
+    //#endregion
+
+    //#region >FUNCIONES
+    function PrintError(error)
+    {
+        do print("")
+        do print("-  ERROR -")
+        do print(error)
+        do print("------------------------------------------------------------")
+        do print("")
+        do print("- USO DE LA HERRAMIENTA -")
+        do print('./dkl st-producto-cc qn="miconexion@grupoapps" ...argumentos')
+        do print("")
+        do print("[Argumentos]")
+        do print("qn = Nombre cualificado de conexión a la base de datos.")
+        do print("da = Número de días anteriores a 'hoy'.")
+        do print("fi = Fecha de inicio de recopilación de datos.")
+        do print("ff = Fecha final de recopilación de datos.")
+        do print("cl = Clase de producto que puede venderse.")
+        do print("ln = Código de una línea de productos.")
+        do print("mr = Código de una marca de productos.")
+        do print("dp = Código de un departamento de productos.")
+        do print("gp = Nombre de un grupo de productos.")
+        do print("cc = Código de un centro de consumo.")
+        do print("sku = Código de un producto.")
+        do print("------------------------------------------------------------")
+    }
+
+    function RecordCombine(&rec1,&rec2)
+    {
+        return record.copyexin(rec2,rec1,"*",",","",":")
+    }
+
+    function DateFormat(dtm,fmt)
+    {
+        if dtm == "" { return "" }
+        if fmt == "" { fmt = "yyyy-MM-dd HH:mm:ss" }
+
+        fecha = date_str(str2dt(dtm),fmt)
+        return fecha
+
+        exception
+        {
+            do pop_exception()
+            do rise_error(99,"Debe indicar una fecha válida.")
+        }
+    }
+
+    function ConvertirADivisa(value,tcprd,tcdoc,mode)
+    {
+        if mode == @convertir_a_divisa_producto {
+            return div((value * tcdoc), tcprd)
+        }
+        if mode == @convertir_a_divisa_documento {
+            return div((value * tcprd), tcdoc)
+        }
+
+        return value
+    }
+
+    function Log(text)
+    {
+        if isset("@batch_context") { do batch.saveLog(@("$job/token"),text) }
+        else { do print(text) }
+    }
+
+    function UpdatePercent(value)
+    {
+        if not(isset("@batch_context")) { return }
+
+        new params
+        {
+            @"token":@("$job/token")
+        }
+        new data
+        {
+            @"percentage":value
+            @"progress_type":2
+        }
+        do dbr.update(batch.openDB(),"job",data,"sys_guid=@token",params)
+    }
+
+    function InsertOrUpdate(&db,tablename,&data)
+    {
+        ref fields=list.create_from_fields(data)
+        str_fields=replace(ranychars(to.json(fields),'[]{}"', " ")," ","")
+
+        sql="INSERT INTO "+tablename+" (sys_dtcreated,sys_timestamp,"+str_fields+") VALUES (NOW(),NOW(),"
+
+        for i=0; i<list.count(fields) {
+            if i>0 { sql=sql+"," }
+            sql=sql+"@"+list.str(fields,i)
+        }
+
+        sql=sql+") ON DUPLICATE KEY UPDATE sys_timestamp=NOW(),"
+
+        for i=0; i<list.count(fields) {
+            field=list.str(fields,i)
+            if i>0 { sql=sql+"," }
+            sql=sql+field+"=@"+field
+        }
+
+        sql=sql+";"
+        return dbr.execute(db, sql, data)
+    }
+
+    function GetStatTable(&db)
+    {
+        tbn_st_producto_cc = ""
+
+        if not(isset("@batch_context")) { tbn_st_producto_cc = @default_table_name }
+        else
+        {
+            tbn_st_producto_cc = dbr.vars.getd(db,"tbn_st_producto_cc",@default_table_name)
+            if tbn_st_producto_cc == "" { tbn_st_producto_cc = @default_table_name }
+        }
+
+        return tbn_st_producto_cc
+    }
+
+    function EnsureStatTable(&db)
+    {
+        tablename = GetStatTable(db)
+        do dbr.execute(db,ftext(@_sql_create_table),@null)
+    }
+
+    function _extractVentas(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            cc.codigo AS `cconsumo`,
+            DATE_FORMAT(v.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS ventas,
+            COUNT(v.sys_pk) AS opventas,
+            COUNT(DISTINCT v.icliente) AS opclientes,
+            ((SUM(d.precio * d.cantidad) * v.tipocambio) / dp.tcambio) AS subtotal,
+            ((SUM(d.descuento1 + d.descuento2) * v.tipocambio) / dp.tcambio) AS descuentos,
+            ((SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4) * v.tipocambio) / dp.tcambio) AS impuestos,
+            (((SUM(d.precio * d.cantidad)
+                - SUM(d.descuento1 + d.descuento2)
+                + SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4)
+            ) * v.tipocambio) / dp.tcambio) AS importe,
+            (SUM(d.factor * d.cantidad) * p.costoultimo) AS costoventas
+        FROM dventa d
+            INNER JOIN producto p ON d.iproducto = p.sys_pk
+            INNER JOIN divisa dp ON p.idivisa = dp.sys_pk
+            INNER JOIN venta v ON d.fk_venta_detalle = v.sys_pk
+            INNER JOIN cconsumo cc ON v.icconsumo = cc.sys_pk
+            LEFT JOIN venta o ON d.documento = o.sys_pk
+        WHERE
+            #<condition>
+            AND (v.documento IN (#<@cRemision>,#<@cTicket>) OR (v.documento = #<@cFactura> AND (d.documento IS NULL OR o.documento IN(#<@cCotizacion>,#<@cPedido>))))
+            AND v.statusadministrativo = 3
+        GROUP BY v.fecha, cc.codigo
+        ORDER BY v.fecha
+        ")
+        ref ventas = dbr.list(db,sql,params)
+        for i = 0; i < list.count(ventas)
+        {
+            ref v = list.obj(ventas,i)
+
+            cconsumo = @@(v,"cconsumo")
+            fecha = @@(v,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            new data
+            {
+                @"cc": cconsumo
+                @"fecha": fecha
+                @"ventas": @@(v,"ventas")
+                @"opventas": @@(v,"opventas")
+                @"opclientes": @@(v,"opclientes")
+                @"impventas": @@(v,"importe")
+                @"impuestos_ventas": @@(v,"impuestos")
+                @"costoventas": @@(v,"costoventas")
+            }
+
+            output<key+"*"> : data
+        }
+    }
+
+    function _extractDevsVenta(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            cc.codigo AS `cconsumo`,
+            DATE_FORMAT(v.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS devoluciones,
+            COUNT(v.sys_pk) AS opventas,
+            COUNT(DISTINCT v.icliente) AS opclientes,
+            ((SUM(d.precio * d.cantidad) * v.tipocambio) / dp.tcambio) AS subtotal,
+            ((SUM(d.descuento1 + d.descuento2) * v.tipocambio) / dp.tcambio) AS descuentos,
+            ((SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4) * v.tipocambio) / dp.tcambio) AS impuestos,
+            (((SUM(d.precio * d.cantidad)
+                - SUM(d.descuento1 + d.descuento2)
+                + SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4)
+            ) * v.tipocambio) / dp.tcambio) AS importe,
+            (SUM(d.factor * d.cantidad) * p.costoultimo) AS costodevventas
+        FROM dventa d
+            INNER JOIN producto p ON d.iproducto = p.sys_pk
+            INNER JOIN divisa dp ON p.idivisa = dp.sys_pk
+            INNER JOIN venta v ON d.fk_venta_detalle = v.sys_pk
+            INNER JOIN cconsumo cc ON v.icconsumo = cc.sys_pk
+            LEFT JOIN venta o ON d.documento = o.sys_pk
+        WHERE
+            #<condition>
+            AND v.documento = #<@cNotaCredito>
+            AND v.statusadministrativo = 3
+        GROUP BY v.fecha, cc.codigo
+        ORDER BY v.fecha
+        ")
+        ref devsventas = dbr.list(db,sql,params)
+        for i = 0; i < list.count(devsventas)
+        {
+            ref d = list.obj(devsventas,i)
+
+            cconsumo = @@(d,"cconsumo")
+            fecha = @@(d,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            ref data = @@(output,"&"+key)
+            if isnull(data)
+            {
+                ref data:record.create()
+                using
+                {
+                    @"cc": cconsumo
+                    @"fecha": fecha
+                }
+            }
+            using data
+            {
+                @"devsventas": @@(d,"devoluciones")
+                @"impdevventas": @@(d,"importe")
+                @"impuestos_devventas": @@(d,"impuestos")
+                @"costodevventas": @@(d,"costodevventas")
+            }
+
+            output<key+"*"> : data
+        }
+    }
+
+    function _extractPedidosPorSurtir(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            IFNULL(cc.codigo,'') AS `cconsumo`,
+            DATE_FORMAT(v.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS por_surtir
+        FROM dventa d
+            INNER JOIN venta v ON d.fk_venta_detalle = v.sys_pk
+            INNER JOIN cconsumo cc ON v.icconsumo = cc.sys_pk
+        WHERE
+            #<condition>
+            AND v.documento = #<@cPedido>
+            AND v.statusadministrativo = 3
+            AND d.`status` = 1
+        GROUP BY v.fecha, cc.codigo
+        ORDER BY v.fecha
+        ")
+        ref pedidos_por_surtir = dbr.list(db,sql,params)
+        for i = 0; i < list.count(pedidos_por_surtir)
+        {
+            ref p = list.obj(pedidos_por_surtir,i)
+
+            cconsumo = @@(p,"$cconsumo")
+            fecha = @@(p,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            ref data = @@(output,"&"+key)
+            if isnull(data)
+            {
+                ref data:record.create()
+                using
+                {
+                    @"cc": cconsumo
+                    @"fecha": fecha
+                }
+            }
+            data<"pedidos_por_surtir"> : @@(p,"por_surtir")
+
+            output<key+"*"> : data
+        }
+    }
+
+    function _extractCompras(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            IFNULL(cc.codigo,'') AS `cconsumo`,
+            DATE_FORMAT(c.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS compras,
+            COUNT(c.sys_pk) AS opcompras,
+            COUNT(DISTINCT c.iproveedor) AS opproveedores,
+            ((SUM(d.precio * d.cantidad) * c.tipocambio) / dp.tcambio) AS subtotal,
+            ((SUM(d.descuento1 + d.descuento2) * c.tipocambio) / dp.tcambio) AS descuentos,
+            ((SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4) * c.tipocambio) / dp.tcambio) AS impuestos,
+            (((SUM(d.precio * d.cantidad)
+                - SUM(d.descuento1 + d.descuento2)
+                + SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4)
+            ) * c.tipocambio) / dp.tcambio) AS importe
+        FROM dcompra d
+            INNER JOIN producto p ON d.iproducto = p.sys_pk
+            INNER JOIN divisa dp ON p.idivisa = dp.sys_pk
+            INNER JOIN compra c ON d.fk_compra_detalle = c.sys_pk
+            INNER JOIN almacen a ON c.ialmacen = a.sys_pk
+            LEFT JOIN cconsumo cc ON cc.ialmacen = a.sys_pk
+            LEFT JOIN compra o ON d.documento = o.sys_pk
+        WHERE
+            #<condition>
+            AND (c.documento = #<@cRemision> OR (c.documento = #<@cFactura> AND (d.documento IS NULL OR o.documento IN(#<@cCotizacion>,#<@cPedido>))))
+            AND c.statusadministrativo = 3
+        GROUP BY c.fecha, cc.codigo
+        ORDER BY c.fecha
+        ")
+        ref compras = dbr.list(db,sql,params)
+        for i = 0; i < list.count(compras)
+        {
+            ref c = list.obj(compras,i)
+
+            cconsumo = @@(c,"$cconsumo")
+            fecha = @@(c,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            new data
+            {
+                @"cc": cconsumo
+                @"fecha": fecha
+                @"compras": @@(c,"compras")
+                @"impcompras": @@(c,"importe")
+                @"impuestos_compras": @@(c,"impuestos")
+            }
+
+            output<key+"*"> : data
+        }
+    }
+
+    function _extractDevsCompra(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            IFNULL(cc.codigo,'') AS `cconsumo`,
+            DATE_FORMAT(c.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS devoluciones,
+            COUNT(c.sys_pk) AS opcompras,
+            COUNT(DISTINCT c.iproveedor) AS opproveedores,
+            ((SUM(d.precio * d.cantidad) * c.tipocambio) / dp.tcambio) AS subtotal,
+            ((SUM(d.descuento1 + d.descuento2) * c.tipocambio) / dp.tcambio) AS descuentos,
+            ((SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4) * c.tipocambio) / dp.tcambio) AS impuestos,
+            (((SUM(d.precio * d.cantidad)
+                - SUM(d.descuento1 + d.descuento2)
+                + SUM(d.impuesto1 + d.impuesto2 + d.impuesto3 + d.impuesto4)
+            ) * c.tipocambio) / dp.tcambio) AS importe
+        FROM dcompra d
+            INNER JOIN producto p ON d.iproducto = p.sys_pk
+            INNER JOIN divisa dp ON p.idivisa = dp.sys_pk
+            INNER JOIN compra c ON d.fk_compra_detalle = c.sys_pk
+            INNER JOIN almacen a ON c.ialmacen = a.sys_pk
+            LEFT JOIN cconsumo cc ON cc.ialmacen = a.sys_pk
+            LEFT JOIN compra o ON d.documento = o.sys_pk
+        WHERE
+            #<condition>
+            AND c.documento = #<@cNotaCredito>
+            AND c.statusadministrativo = 3
+        GROUP BY c.fecha, cc.codigo
+        ORDER BY c.fecha
+        ")
+        ref devscompras = dbr.list(db,sql,params)
+        for i = 0; i < list.count(devscompras)
+        {
+            ref d = list.obj(devscompras,i)
+
+            cconsumo = @@(d,"$cconsumo")
+            fecha = @@(d,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            ref data = @@(output,"&"+key)
+            if isnull(data)
+            {
+                ref data:record.create()
+                using
+                {
+                    @"cc": cconsumo
+                    @"fecha": fecha
+                }
+            }
+            using data
+            {
+                @"devscompras": @@(d,"devoluciones")
+                @"impdevcompras": @@(d,"importe")
+                @"impuestos_devcompras": @@(d,"impuestos")
+            }
+
+            output<key+"*"> : data
+        }
+    }
+
+    function _extractPedidosPorLlegar(&db,&params,&output)
+    {
+        condition = @@(params,"$condition")
+        sql = ftext("
+        SELECT
+            IFNULL(cc.codigo,'') AS `cconsumo`,
+            DATE_FORMAT(c.fecha,'%Y-%m-%d') AS fecha,
+            SUM(d.factor * d.cantidad) AS por_llegar
+        FROM dcompra d
+            INNER JOIN compra c ON d.fk_compra_detalle = c.sys_pk
+            INNER JOIN almacen a ON c.ialmacen = a.sys_pk
+            LEFT JOIN cconsumo cc ON cc.ialmacen = a.sys_pk
+        WHERE
+            #<condition>
+            AND c.documento = #<@cPedido>
+            AND c.statusadministrativo = 3
+            AND d.`status` = 1
+        GROUP BY c.fecha, cc.codigo
+        ORDER BY c.fecha
+        ")
+        ref pedidos_por_llegar = dbr.list(db,sql,params)
+        for i = 0; i < list.count(pedidos_por_llegar)
+        {
+            ref p = list.obj(pedidos_por_llegar,i)
+
+            cconsumo = @@(p,"$cconsumo")
+            fecha = @@(p,"fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            ref data = @@(output,"&"+key)
+            if isnull(data)
+            {
+                ref data:record.create()
+                using
+                {
+                    @"cc": cconsumo
+                    @"fecha": fecha
+                }
+            }
+            data<"pedidos_por_llegar"> : @@(p,"por_llegar")
+
+            output<key+"*"> : data
+        }
+    }
+
+    function ExtractCardexStatistics(&db,&params)
+    {
+        sql = ftext("
+        SELECT
+            IFNULL(cc.codigo,'') AS `cconsumo`,
+            DATE_FORMAT(c.fecha,'%Y-%m-%d') AS fecha,
+            SUM(IFNULL(d.entradas,0)) AS entradas,
+            SUM(IFNULL(d.salidas,0)) AS salidas,
+            SUM(IFNULL(d.cargos,0)) AS cargos,
+            SUM(IFNULL(d.abonos,0)) AS abonos,
+            (select sum(ifnull(_d.entradas,0)) - sum(ifnull(_d.salidas,0))
+            from dcardex _d
+                inner join cardex _c on _d.fk_cardex_movimientos = _c.sys_pk
+            where
+                ifnull(_c.aplicado,0)
+                and _d.iproducto = d.iproducto
+                and _c.fecha <= c.fecha
+            ) AS existencia
+        FROM dcardex d
+            INNER JOIN cardex c ON d.fk_cardex_movimientos = c.sys_pk
+            INNER JOIN almacen a ON d.ialmacen = a.sys_pk
+            LEFT JOIN cconsumo cc ON cc.ialmacen = a.sys_pk
+        WHERE
+            (CASE
+                WHEN @fi != '' AND @ff != '' THEN c.fecha BETWEEN DATE(@fi) AND DATE(@ff)
+                WHEN @fi != '' AND @ff = '' THEN c.fecha >= DATE(@fi)
+                WHEN @fi = '' AND @ff != '' THEN c.fecha <= DATE(@ff)
+                WHEN @da > 0 THEN c.fecha BETWEEN ADDDATE(CURDATE(), INTERVAL -@da DAY) AND CURDATE()
+                ELSE TRUE
+            END)
+            AND IFNULL(c.aplicado,0)
+            AND (@cc = '' OR IFNULL(cc.codigo,'') = @cc)
+            AND d.iproducto = @iproducto
+        GROUP BY c.fecha, cc.codigo
+        ORDER BY c.fecha
+        ")
+        ref movimientos = dbr.list(db,sql,params)
+
+        ref response = record.create()
+        for i = 0; i < list.count(movimientos)
+        {
+            ref m = list.obj(movimientos,i)
+
+            cconsumo = @@(m,"$cconsumo")
+            fecha = @@(m,"$fecha")
+            key = cconsumo + replace(fecha,"-","")
+
+            new data
+            {
+                @"cc": cconsumo
+                @"fecha": fecha
+                @"entradas": @@(m,"#entradas")
+                @"salidas": @@(m,"#salidas")
+                @"cargos": @@(m,"#cargos")
+                @"abonos": @@(m,"#abonos")
+                @"existencia": @@(m,"#existencia")
+            }
+
+            response<key+"*"> : data
+        }
+        return response
+    }
+
+    function ExtractCompraStatistics(&db,&params)
+    {
+        ref response = record.create()
+        condition = ftext("
+            (CASE
+                WHEN @fi != '' AND @ff != '' THEN c.fecha BETWEEN DATE(@fi) AND DATE(@ff)
+                WHEN @fi != '' AND @ff = '' THEN c.fecha >= DATE(@fi)
+                WHEN @fi = '' AND @ff != '' THEN c.fecha <= DATE(@ff)
+                WHEN @da > 0 THEN c.fecha BETWEEN ADDDATE(CURDATE(), INTERVAL -@da DAY) AND CURDATE()
+                ELSE TRUE
+            END)
+            AND (@cc = '' OR IFNULL(cc.codigo,'') = @cc)
+            AND d.iproducto = @iproducto
+        ")
+
+        params<"condition"> : condition
+
+        do _extractCompras(db,params,response)
+        do _extractDevsCompra(db,params,response)
+        do _extractPedidosPorLlegar(db,params,response)
+        do field.remove(params,"condition")
+
+        return response
+    }
+
+    function ExtractVentaStatistics(&db,&params)
+    {
+        ref response = record.create()
+        condition = ftext("
+            (CASE
+                WHEN @fi != '' AND @ff != '' THEN v.fecha BETWEEN DATE(@fi) AND DATE(@ff)
+                WHEN @fi != '' AND @ff = '' THEN v.fecha >= DATE(@fi)
+                WHEN @fi = '' AND @ff != '' THEN v.fecha <= DATE(@ff)
+                WHEN @da > 0 THEN v.fecha BETWEEN ADDDATE(CURDATE(), INTERVAL -@da DAY) AND CURDATE()
+                ELSE TRUE
+            END)
+            AND (@cc = '' OR cc.codigo = @cc)
+            AND d.iproducto = @iproducto
+        ")
+        
+        params<"condition"> : condition
+
+        do _extractVentas(db,params,response)
+        do _extractDevsVenta(db,params,response)
+        do _extractPedidosPorSurtir(db,params,response)
+        do field.remove(params,"condition")
+
+        return response
+    }
+
+    function SaveProductStat(&db,&params,&product)
+    {
+        params<"iproducto"> : @@(product,"sys_pk")
+
+        ref cardex_stat = ExtractCardexStatistics(db,params)
+        ref compra_stat = ExtractCompraStatistics(db,params)
+        ref ventas_stat = ExtractVentaStatistics(db,params)
+
+        cdx_stat_length = list.count(list.create_from_fields(cardex_stat))
+        cmp_stat_length = list.count(list.create_from_fields(compra_stat))
+        vnt_stat_length = list.count(list.create_from_fields(ventas_stat))
+        max = 0
+        codigo = @@(product,"codigo")
+        unidad = @@(product,"unidad")
+        divisa = @@(product,"divisa")
+        descripcion = @@(product,"descripcion")
+        tablename = GetStatTable(db)
+
+        if cdx_stat_length > max {
+            ref keys = list.create_from_fields(cardex_stat)
+            max = cdx_stat_length
+        }
+        if cmp_stat_length > max {
+            ref keys = list.create_from_fields(compra_stat)
+            max = cmp_stat_length
+        }
+        if vnt_stat_length > max {
+            ref keys = list.create_from_fields(ventas_stat)
+            max = vnt_stat_length
+        }
+
+        for i = 0; i < max
+        {
+            key = list.str(keys,i)
+            new stat
+            {
+                @"sku": codigo
+                @"unidad": unidad
+                @"divisa": divisa
+                @"descripcion": descripcion
+            }
+
+            switch max
+            {
+                case cdx_stat_length
+                {
+                    ref st_cardex = field.obj(cardex_stat,key)
+                    ref st_venta = field.dobj(ventas_stat,key,record.create())
+                    ref st_compra = field.dobj(compra_stat,key,record.create())
+                    break
+                }
+                case cmp_stat_length
+                {
+                    ref st_compra = field.obj(compra_stat,key)
+                    ref st_cardex = field.dobj(cardex_stat,key,record.create())
+                    ref st_venta = field.dobj(ventas_stat,key,record.create())
+                    break
+                }
+                case vnt_stat_length
+                {
+                    ref st_venta = field.obj(ventas_stat,key)
+                    ref st_compra = field.dobj(compra_stat,key,record.create())
+                    ref st_cardex = field.dobj(cardex_stat,key,record.create())
+                    break
+                }
+            }
+
+            ref stat:RecordCombine(stat,st_venta)
+            ref stat:RecordCombine(stat,st_compra)
+            ref stat:RecordCombine(stat,st_cardex)
+
+            do InsertOrUpdate(db,tablename,stat)
+        }
+    }
+
+    function GetProducts(&db,&params)
+    {
+        sql = "
+        SELECT DISTINCT
+            p.sys_pk,
+            p.codigo,
+            p.descripcion,
+            p.unidad,
+            p.existencia,
+            dv.codigo AS `divisa`,
+            dv.tcambio
+        FROM producto p
+            INNER JOIN divisa dv ON p.idivisa = dv.sys_pk
+            INNER JOIN cclaseproducto cl ON p.iclase = cl.id
+            INNER JOIN linea ln ON p.ilinea = ln.sys_pk
+            LEFT JOIN marca mr ON p.imarca = mr.sys_pk
+            LEFT JOIN departamento dp ON p.idepartamento = dp.sys_pk
+            LEFT JOIN grupoproductos_producto_ gpp ON gpp.iproductos = p.sys_pk
+            LEFT JOIN grupoproductos gp ON gpp.igrupos = gp.sys_pk
+        WHERE
+            NOT IFNULL(p.sys_deleted,0)
+            AND IF(@cl = '', (cl.id > 1 AND cl.id < 7), cl.const = @cl)
+            AND (@ln = '' OR ln.codigo = @ln)
+            AND (@mr = '' OR IFNULL(mr.codigo,'') = @mr)
+            AND (@dp = '' OR IFNULL(dp.codigo,'') = @dp)
+            AND (@gp = '' OR IFNULL(gp.nombre,'') = @gp)
+            AND (@sku = '' OR p.codigo = @sku)
+        "
+        return dbr.list(db,sql,params)
+    }
+
+    function ExtractStatistics(&db,&params)
+    {
+        ref products = GetProducts(db,params)
+        
+        length = list.count(products)
+        if length < 1 {
+            do Log("No se encontraron productos con los parámetros proporcionados.")
+            do Log(to.json(params))
+            do UpdatePercent(100)
+            return
+        }
+        
+        progress = (100 / length)
+        affected_rows = 0
+        percent = 0
+
+        for i = 0; i < length
+        {
+            ref product = list.obj(products,i)
+
+            do Log("+ " + @@(product,"codigo") +" - "+ @@(product,"descripcion"))
+            do SaveProductStat(db,params,product)
+
+            affected_rows = affected_rows + 1
+
+            exception
+            {
+                code = last_error_code()
+                error = last_error()
+
+                do pop_exception()
+                do Log(" * "+error)
+            }
+
+            percent = percent + progress
+            // do Log("En proceso ..."+str(percent)+"%")
+            do UpdatePercent(percent)
+        }
+
+        do Log("** Productos analizados ("+str(affected_rows)+"/"+str(length)+")")
+    }
+
+    function ValidateParams(&params)
+    {
+        da = abs(@@(params,"#da"))
+        fi = DateFormat(@@(params,"$fi"),"yyyy-MM-dd")
+        ff = DateFormat(@@(params,"$ff"),"yyyy-MM-dd")
+        cl = trim(@@(params,"$cl"))
+        ln = trim(@@(params,"$ln"))
+        mr = trim(@@(params,"$mr"))
+        dp = trim(@@(params,"$dp"))
+        gp = trim(@@(params,"$gp"))
+        cc = trim(@@(params,"$cc"))
+        sku = trim(@@(params,"$sku"))
+
+        if da == 0 && fi == "" && ff == "" { do rise_error(99,"Debe indicar al menos uno de los siguientes argumentos: 'da','fi','ff'.") }
+        if cl == "*" || val(cl) == -1 { cl = "" }
+        if ln == "*" || val(ln) == -1 { ln = "" }
+        if mr == "*" || val(mr) == -1 { mr = "" }
+        if dp == "*" || val(dp) == -1 { dp = "" }
+        if gp == "*" || val(gp) == -1 { gp = "" }
+        if cc == "*" || val(cc) == -1 { cc = "" }
+        if sku == "*" || val(sku) == -1 { sku = "" }
+
+        using params
+        {
+            @"da": da
+            @"fi": fi
+            @"ff": ff
+            @"cl": cl
+            @"ln": ln
+            @"mr": mr
+            @"dp": dp
+            @"gp": gp
+            @"cc": cc
+            @"sku": sku
+        }
+    }
+    //#endregion
+
+    //#region >INICIO
+    if isset("@batch_context")
+    {
+        ref params = @("&params")
+        ref db = @("&database")
+        do batch.v12.grant(@_action_id)
+    }
+    else
+    {
+        ref params = commandline("=")
+        ref db = dbr.open(@@(params,"$qn"))
+    }
+
+    do Log("> Extracción de estadísticas.")
+
+    do ValidateParams(params)
+    do EnsureStatTable(db)
+    do ExtractStatistics(db,params)
+
+    // do Log("**Operación completada.")
+
+    exception
+    {
+        code = last_error_code()
+        error = last_error()
+
+        if isset("db")
+        {
+            if dbr.in_transaction(db){ do dbr.rollback(db) }
+            if not(isset("@batch_context")) { do dbr.close(db) }
+        }
+        
+        if not(isset("@batch_context")) { do PrintError(error) }
+        else { do rise_error(code,error) }
+    }
+    //#endregion
+
+    do @context.end()
+}

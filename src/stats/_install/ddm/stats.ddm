@@ -1,0 +1,5 @@
+#include "ddm.dkh"
+model "erp.cxc"
+{
+    #include "induxsoft.abstracts.ddm"
+}

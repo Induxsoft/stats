@@ -1,0 +1,45 @@
+#include "dkli.dkh"
+#!
+module ""
+{
+    point @list to st.producto.cc.NotImplemented1
+    point @read to st.producto.cc.NotImplemented1
+    point @blank to st.producto.cc.NotImplemented1
+    point @create to st.producto.cc.NotImplemented2
+    point @update to st.producto.cc.NotImplemented2
+    point @delete to st.producto.cc.NotImplemented1
+
+    switch @@(@http_context,"$request/get/_act")
+    {
+        case "buscar-linea"
+        {
+            point @list to st.producto.cc.buscarLinea
+            break
+        }
+        case "buscar-marca"
+        {
+            point @list to st.producto.cc.buscarMarca
+            break
+        }
+        case "buscar-depto"
+        {
+            point @list to st.producto.cc.buscarDepto
+            break
+        }
+        case "buscar-gpproductos"
+        {
+            point @list to st.producto.cc.buscarGrupoProductos
+            break
+        }
+        case "buscar-cconsumo"
+        {
+            point @list to st.producto.cc.buscarCentroConsumo
+            break
+        }
+        case "buscar-producto"
+        {
+            point @list to st.producto.cc.buscarProducto
+            break
+        }
+    }
+}
