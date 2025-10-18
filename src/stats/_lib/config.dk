@@ -6,4 +6,9 @@ module "Variables globales"
 	do errordet(@false) //Mostrar detalles del error: @true -> {code} description [Ln 000] | @false -> description
 	
 	// Agregue valores de configuración para todas las aplicaciones.
+
+	@SYMBOLE_DIVISA="$ "
+	@THOUSANDS_SEPARATOR=","
+	@DECIMAL_SEPARATOR="."
+	@DECIMAL_PRECISION= 2 
 }

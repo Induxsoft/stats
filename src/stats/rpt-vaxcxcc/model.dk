@@ -1,0 +1,86 @@
+#include "dkli.dkh"
+#!
+module ":statvmcc"
+{
+    @default_table_name = "st_cliente_vmcc"
+    @list_query="SELECT distinct
+        st.cod_cliente,st.nombre,
+        -- st.ano,st.mes,
+        ifnull(a.Nombre,'') agente,
+        cc.Descripcion as desc_cc,
+        tc.Descripcion tipo_cliente,
+        tc.sys_pk as tc,
+        ifnull(a.sys_pk,-1) as iagente,
+        cc.sys_pk as cc,
+        c.sys_pk as pkcliente
+        from #<@tablename> st
+        INNER JOIN cliente c ON st.cod_cliente=c.Codigo
+        INNER JOIN tipocliente tc ON c.Tipo=tc.Sys_PK
+        LEFT JOIN agente a ON c.Agente=a.Sys_PK
+        INNER JOIN cconsumo cc ON st.cc=cc.Codigo
+        WHERE if(IFNULL(@tc,-1)=-1,TRUE, tc.Sys_PK=@tc )
+        AND if(IFNULL(@agente,-1)=-1,TRUE, a.Sys_PK=@agente )
+        AND if(IFNULL(@cc,-1)=-1,TRUE, cc.Sys_PK=@cc )
+        AND st.ano >= @ano_i and st.ano <= @ano_f
+        GROUP BY
+        -- st.ano,
+        tc.sys_pk,a.sys_pk,cc.sys_pk,c.sys_pk
+        ORDER BY st.nombre asc;"
+
+    @query_saldo="SELECT 
+        SUM(st.ventas)ventas,
+        SUM(st.devoluciones)devoluciones,
+        st.op_sf,st.op_fac ,st.ano,st.mes
+        from #<@tablename> st 
+
+        INNER JOIN cliente c ON st.cod_cliente=c.Codigo
+        INNER JOIN tipocliente tc ON c.Tipo=tc.Sys_PK
+        LEFT JOIN agente a ON c.Agente=a.Sys_PK
+        INNER JOIN cconsumo cc ON st.cc=cc.Codigo
+
+        WHERE tc.Sys_PK=@tc
+        AND if(ifnull(@iagente,-1)=-1,true,a.Sys_PK=@iagente)
+        AND cc.Sys_PK=@cc
+        AND c.sys_pk=@pkcliente
+        AND st.ano=@ano"
+    
+    function GetStatTable(&db)
+    {
+        tbn_st_cliente_vmcc = ""
+
+        tbn_st_cliente_vmcc = dbr.vars.getd(db,"tbn_st_cliente_vmcc",@default_table_name)
+        if tbn_st_cliente_vmcc == "" { tbn_st_cliente_vmcc = @default_table_name }
+
+        if tbn_st_cliente_vmcc == ""{do rise_error(500,"No existe la tabla correspondiente, para generar el reporte, ejecute la herramienta 'st-cliente-vmcc.dkl'")}
+        
+        return tbn_st_cliente_vmcc
+    }
+    
+    list::&db,&params
+    {
+        @tablename=GetStatTable(db)
+        
+        if @@(params,"$ano_i")==""{params<"ano_i">:date_str(now(),"yyyy")}
+        if @@(params,"$ano_f")==""{params<"ano_f">:date_str(now(),"yyyy")}
+
+        new data
+        {
+            @"sql":ftext(@query_saldo)
+            @"anos*":dbr.list(db,"SELECT YEAR(NOW())ano
+                        union
+                        SELECT ano from st_cliente_vmcc ORDER BY ano desc",@null)
+            @"data*":entity.list(db,params)
+            @"tipos*":dbr.list(db,"SELECT '-1' AS sys_pk,'(Todos)' descripcion
+                                    UNION
+                                    select sys_pk,concat(codigo,' - ',descripcion)descripcion from tipocliente where ifnull(sys_deleted,0)=0",@null)
+            @"agentes*":dbr.list(db,"SELECT '-1' AS sys_pk,'(Todos)' nombre
+                                    UNION
+                                    select sys_pk,concat(codigo,' - ',nombre)nombre from agente where ifnull(sys_deleted,0)=0",@null)
+            @"ccs*":dbr.list(db,"SELECT '-1' AS sys_pk,'(Todos)' descripcion
+                                    UNION
+                                    select sys_pk,concat(codigo,' - ',descripcion)descripcion from cconsumo where ifnull(sys_deleted,0)=0",@null)
+        }
+        return data
+    }
+    point @list to statvmcc.list
+}

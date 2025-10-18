@@ -1,1 +1,15 @@
-[{"pattern":"/_program/","routes":[{"route":"/st-producto-cc/","entity_type":"st-producto-cc"}]}]
+[
+    {
+        "pattern": "/_program/",
+        "routes": [
+            {
+                "route": "/st-producto-cc/",
+                "entity_type": "st-producto-cc"
+            },
+            {
+                "route": "/rpt-vaxcxcc/",
+                "entity_type": "rpt-vaxcxcc"
+            }
+        ]
+    }
+]

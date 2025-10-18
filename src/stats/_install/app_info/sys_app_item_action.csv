@@ -1,2 +1,3 @@
 "id","title","shorttitle","icon16x16","href","_blank","appid","itemtype","req_context_item_id","act_type"
 EAF0,Extracción de estadísticas de productos por centro de consumo,"st-producto-cc",,/!/batch/taskman/EA/st-producto-cc/,0,stats.st-producto-cc,DET096,0,action
+EAF1,Reporte de ventas anuales por cliente,"st-cliente-vmcc",,/!/stats/rpt-vaxcxcc/,0,stats.rpt-vaxcxcc,DET0B2,0,action

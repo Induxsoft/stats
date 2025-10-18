@@ -1,0 +1,222 @@
+#include "dkli.dkh"
+#!
+module ""
+{
+    #include "functions.dkh"
+    #include "serialize.dkh"
+    #include "dbr.dkh"
+    #include "dbr.vars.dkl"
+    #include "uielements.dkl"
+    #include "uielements.v12.dkl"
+    #include "../_lib/config.dk"
+    #include "../_lib/lib.dk"
+
+    do @context.begin(@crud_context)
+    ref db=@("&database")
+
+    new nav_config
+    {
+        @"title": "Reporte de ventas anuales por cliente"
+        @"buttons*": @null
+        @"urlexit": "/"
+    }
+    new sel_tipos
+    {
+        @"datatable*": @("&./tipos")
+        @"id": "tc"
+        new member "attributes"
+        {
+            @"class": "form-select rounded-0"
+            @"name": "tc"
+            // @"onchange":"document.getElementById('frm_filter').submit()"
+        }
+        @"value_field": "sys_pk"
+        @"text_field": "descripcion"
+        @"selected": @("$parameters/tc")
+    }
+    new sel_agentes
+    {
+        @"datatable*": @("&./agentes")
+        @"id": "agente"
+        new member "attributes"
+        {
+            @"class": "form-select rounded-0"
+            @"name": "agente"
+            // @"onchange":"document.getElementById('frm_filter').submit()"
+        }
+        @"value_field": "sys_pk"
+        @"text_field": "nombre"
+        @"selected": @("$parameters/agente")
+    }
+    new sel_cc
+    {
+        @"datatable*": @("&./ccs")
+        @"id": "cc"
+        new member "attributes"
+        {
+            @"class": "form-select rounded-0"
+            @"name": "cc"
+            // @"onchange":"document.getElementById('frm_filter').submit()"
+        }
+        @"value_field": "sys_pk"
+        @"text_field": "descripcion"
+        @"selected": @("$parameters/cc")
+    }
+    new sel_anios
+    {
+        @"datatable*": @("&./anos")
+        @"id": "ano_i"
+        new member "attributes"
+        {
+            @"class": "form-select rounded-0"
+            @"name": "ano_i"
+            // @"onchange":"document.getElementById('frm_filter').submit()"
+        }
+        @"value_field": "ano"
+        @"text_field": "ano"
+        @"selected": @("$parameters/ano_i")
+
+    }
+    ref params=@("&parameters")
+    ano_i=@("#parameters/ano_i")
+    ano_f=@("#parameters/ano_f")
+    ref data=@("&./data")
+    sql=@("$./sql")
+    
+    @DECIMAL_PRECISION=parse.num(dbr.vars.getd(db,"FXCA001","0"))
+
+    #$
+    div(class="container-lg" id="view")
+    {
+        // Filtros y acciones
+        section(id="top_area")
+        {
+            #!
+            do uie.printV12FormBar(nav_config)
+            #$
+            form(action="." method="GET" id="frm_filter")
+            {
+                div(class="row")
+                {
+                    div(class="col-md-1")
+                    {
+                        label(class="" "for"=""){"Año inicial:"}
+                        #!
+                        do uie.dbSelect(sel_anios)
+                        #$
+                    }   
+                    div(class="col-md-1")
+                    {
+                        label(class="" "for"=""){"Año final:"}
+                        #!
+                        sel_anios<"id">:"ano_f"
+                        sel_anios<"attributes/name">:"ano_f"
+                        sel_anios<"selected">:@("$parameters/ano_f")
+                        do uie.dbSelect(sel_anios)
+                        #$
+                    }
+                    div(class="col-md-3")
+                    {
+                        label(class="" "for"=""){"Tipo cliente:"}
+                        #!
+                        do uie.dbSelect(sel_tipos)
+                        #$
+                    }
+                    div(class="col-md-3")
+                    {
+                        label(class="" "for"=""){"Agente:"}
+                        #!
+                        do uie.dbSelect(sel_agentes)
+                        #$
+                    }
+                    div(class="col-md-3")
+                    {
+                        label(class="" "for"=""){"Centro consumo:"}
+                        #!
+                        do uie.dbSelect(sel_cc)
+                        #$
+                    }
+                    div(class="col-md-1 mt-4")
+                    {
+                        button(class="btn btn-primary induxsoft-cornes" type="submit" id=""){$"Aplicar"}
+                    }
+                }
+            }
+            
+            hr{}
+        }
+        section(id="work_area")
+        {
+            // h3{"Filas: #<@count(data)>"}
+            table(class="table")
+            {
+                thead
+                {
+                    tr
+                    {
+                        th{"Código"}
+                        th{"Nombre"}
+                        th{"Tipo cliente"}
+                        th{"Agente"}
+                        th{"CC"}
+                        #!
+                        for i = ano_i ; i <= ano_f
+                        {
+                            #$
+                            th(class="text-center"){"#<i>"}
+                        }
+                        #$
+                        th(class="text-center"){"Total"}
+                    }
+                }
+                tbody
+                {
+                    #!
+                    ref totales=record.create()
+                    for i = 0; i < @count(data)
+                    {
+                        ref dt=@item(data,i)
+                        #$
+                        tr
+                        {
+                            td{"#<@@(dt,'$cod_cliente')>"}
+                            td{"#<@@(dt,'$nombre')>"}
+                            td{"#<@@(dt,'$tipo_cliente')>"}
+                            td{"#<@@(dt,'$agente')>"}
+                            td{"#<@@(dt,'$desc_cc')>"}
+                            #!
+                            total= 0
+                            for j = ano_i ; j <= ano_f
+                            {
+                                dt<"ano">:j
+                                ref saldo=dbr.rec(db,sql,dt)
+                                total=total + @@(saldo,'#ventas')
+                                totales<str(j)>:@@(totales,"#"+str(j)) + @@(saldo,'#ventas')
+                                #$
+                                td(class="text-end"){"#<number_format(@@(saldo,'#ventas'))>"}
+                            }
+                            td(class="text-end"){"#<number_format(total)>"}
+                        }
+                    }
+                    #$
+                    tr
+                    {
+                        td(class="fw-bold" colspan="5"){"Totales:"}
+                        #!
+                        ref ltotales=list.create_from_fields(totales)
+                        _total= 0
+                        for i = 0; i < @count(ltotales)
+                        {
+                            key=list.str(ltotales,i)
+                            total=@@(totales,"#"+key)
+                            _total=_total + total
+                            #$
+                            td(class="text-end fw-bold"){"#<number_format(total)>"}
+                        }
+                        td(class="text-end fw-bold"){"#<number_format(_total)>"}
+                    }
+                }
+            }
+        }
+    }
+}

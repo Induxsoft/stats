@@ -1,0 +1,318 @@
+#include "dkli.dkh"
+#!
+program ""
+{
+    #include "functions.dkh"
+    #include "serialize.dkh"
+    #include "dbr.dkh"
+    #include "dbr.vars.dkl"
+
+    //#region funciones
+    
+    
+    function GetStatTable(&db)
+    {
+        tbn_st_cliente_vmcc = ""
+
+        tbn_st_cliente_vmcc = dbr.vars.getd(db,"tbn_st_cliente_vmcc",@default_table_name)
+        if tbn_st_cliente_vmcc == "" { tbn_st_cliente_vmcc = @default_table_name }
+
+        return tbn_st_cliente_vmcc
+    }
+    function EnsureStatTable(&db)
+    {
+        tablename = GetStatTable(db)
+        do dbr.execute(db,ftext(@_sql_create_table),@null)
+    }
+    
+    function Log(text)
+    {
+        if isset("@batch_context") { do batch.saveLog(@("$job/token"),text) }
+        else { do print(text) }
+    }
+    function PrintError(error)
+    {
+        do print("")
+        do print("-  ERROR -")
+        do print(error)
+        do print("------------------------------------------------------------")
+        do print("")
+        do print("- USO DE LA HERRAMIENTA -")
+        do print('./dkl st-cliente-vmcc qn="miconexion@grupoapps" ...argumentos')
+        do print("")
+        do print("[Argumentos]")
+        do print("qn = Nombre cualificado de conexión a la base de datos.")
+        do print("fi = Fecha de inicio de recopilación de datos.")
+        do print("ff = Fecha final de recopilación de datos.")
+        do print("ma = número de meses anteriores a hoy.")
+        do print("tc = codigo tipo cliente.")
+        do print("c = Código de cliente.")
+        do print("cc = Código de un centro de consumo.")
+        do print("------------------------------------------------------------")
+    }
+    function UpdatePercent(value)
+    {
+        if not(isset("@batch_context")) { return }
+
+        new params
+        {
+            @"token":@("$job/token")
+        }
+        new data
+        {
+            @"percentage":value
+            @"progress_type":2
+        }
+        do dbr.update(batch.openDB(),"job",data,"sys_guid=@token",params)
+    }
+    function InsertOrUpdate(&db,tablename,&data)
+    {
+        ref fields=list.create_from_fields(data)
+        str_fields=replace(ranychars(to.json(fields),'[]{}"', " ")," ","")
+
+        sql="INSERT INTO "+tablename+" (sys_guid,sys_dtcreated,sys_timestamp,"+str_fields+") VALUES (REPLACE(UUID(),'-',''),NOW(),NOW(),"
+
+        for i=0; i<list.count(fields) {
+            if i>0 { sql=sql+"," }
+            sql=sql+"@"+list.str(fields,i)
+        }
+
+        sql=sql+") ON DUPLICATE KEY UPDATE sys_timestamp=NOW(),"
+
+        for i=0; i<list.count(fields) {
+            field=list.str(fields,i)
+            if i>0 { sql=sql+"," }
+            sql=sql+field+"=@"+field
+        }
+
+        sql=sql+";"
+        return dbr.execute(db, sql, data)
+    }
+    function InsertStats(&db,&params,&ventas)
+    {
+        tablename=GetStatTable(db)
+        divisa_pred=parse.num(dbr.vars.getd(db,"FXCA013","1"))
+        params<"divisa">:divisa_pred
+        
+        ref divisa=dbr.rec(db,"select codigo,ifnull(tcambio,1)tcambio from divisa where sys_pk=@divisa",params)
+        tcambio=@@(divisa,"#tcambio")
+        if tcambio < 1{tcambio= 1}
+
+        length = list.count(ventas)
+        if length < 1 
+        {
+            do Log("No se encontraron ventas con los parámetros proporcionados.")
+            do Log(to.json(params))
+            do UpdatePercent(100)
+            return
+        }
+
+        progress = (100 / length)
+        affected_rows = 0
+        percent = 0
+
+        for i = 0; i < length
+        {
+            ref venta=record.caseinsensitive(from.json(to.json(@item(ventas,i))))
+            sql="SELECT 
+                        (
+                            SELECT COUNT(*) from
+                            venta v WHERE v.ICConsumo=@pkcc
+                            AND v.ICliente=@pkcliente 
+                            AND v.IDivisa=@pkdivisa
+                            AND MONTH(v.Sys_DTCreated)=@mes
+                            AND YEAR(v.Sys_DTCreated)=@ano
+                            AND v.documento IN (#<@cTicket>,#<@cRemision>)
+                            AND v.statusadministrativo <> 99
+                        )op_sf,
+                        (
+                            SELECT COUNT(*) from
+                            venta v WHERE v.ICConsumo=@pkcc
+                            AND v.ICliente=@pkcliente 
+                            AND v.IDivisa=@pkdivisa
+                            AND MONTH(v.Sys_DTCreated)=@mes
+                            AND YEAR(v.Sys_DTCreated)=@ano
+                            AND v.documento IN (#<@cFactura>)
+                            AND v.statusadministrativo <> 99
+                        )op_fac"
+            
+            ref totales=dbr.rec(db,ftext(sql),venta)
+            if divisa_pred != @@(venta,"#pkdivisa")
+            {
+                venta<"devoluciones">: @@(venta,"#devoluciones") * tcambio
+                venta<"subtotal">: @@(venta,"#subtotal") * tcambio
+            }
+
+            new data_stats
+            {
+                @"cc":@@(venta,"$cconsumo")
+                @"divisa":@@(venta,"$cod_divisa")
+                @"ano":@@(venta,"#ano")
+                @"mes":@@(venta,"#mes")
+                @"cod_cliente":@@(venta,"$cod_cliente")
+                @"nombre":@@(venta,"$nombre_cliente")
+                @"ventas":@@(venta,"#subtotal")
+                @"devoluciones":@@(venta,"#devoluciones")
+                @"op_sf":@@(totales,"#op_sf")
+                @"op_fac":@@(totales,"#op_fac")
+            }
+
+            do print("> "+@@(venta,"$cod_cliente") + " "+@@(venta,"$nombre_cliente"))
+
+            do InsertOrUpdate(db,tablename,data_stats)
+            affected_rows = affected_rows + 1
+
+            exception
+            {
+                code = last_error_code()
+                error = last_error()
+
+                do pop_exception()
+                do Log(" * "+error)
+            }
+
+            percent = percent + progress
+
+            do UpdatePercent(percent)
+        }
+        do Log("** Estadisticas ("+str(affected_rows)+"/"+str(length)+")")
+    }
+    function _extractVentas(&db,&params)
+    {
+        condition = @@(params,"$condition")
+        documentos=@@(params,"$documentos")
+
+        sql = ftext("
+        select
+            cc.sys_pk pkcc,
+            cc.codigo as `cconsumo`,
+            date_format(v.fecha,'%y-%m-%d') as fecha,
+            count(v.sys_pk) as opventas,
+            sum(v.subtotal - (v.descuento1 + v.descuento2))subtotal,
+				year(v.sys_dtcreated) ano,
+				month(v.sys_dtcreated) mes,
+				c.codigo as cod_cliente,
+				c.sys_pk pkcliente,
+				c.nombre as nombre_cliente,
+				dp.codigo as cod_divisa,
+				dp.sys_pk as pkdivisa,
+				(
+					select
+					 ifnull(sum(ifnull(vd.subtotal,0) - (ifnull(vd.descuento1,0) + ifnull(vd.descuento2,0))),0) 
+					from venta vd 
+					inner join divisa d on vd.idivisa=d.sys_pk
+					where vd.documento=#<@cNotaCredito> and vd.icconsumo=cc.sys_pk
+					and month(vd.sys_dtcreated)=month(v.sys_dtcreated)
+					and year(vd.sys_dtcreated)=year(v.sys_dtcreated)
+					and vd.icliente=c.sys_pk
+				)devoluciones
+        from venta v
+            inner join divisa dp on v.idivisa = dp.sys_pk
+            inner join cconsumo cc on v.icconsumo = cc.sys_pk
+            inner join cliente c on v.icliente=c.sys_pk
+            inner join tipocliente tc on c.tipo=tc.sys_pk
+        where true 
+            and IFNULL(c.sys_deleted,0)=0
+            and v.documento in (#<@cTicket>,#<@cRemision>,#<@cFactura>)
+            and v.statusadministrativo <> 99
+            and v.statusfacturacion <> 3
+            and if(v.Documento=#<@cFactura>,TRUE,v.statusfacturacion <> 3)
+            and year(v.sys_dtcreated) > #<@ano_mayor_a>
+
+            and if(ifnull(@cc,'')='',true,cc.codigo=@cc)
+            and if(ifnull(@tc,'')='',true,tc.codigo=@tc)
+            and if(ifnull(@c,'')='',true,c.codigo=@c)
+            and if(ifnull(@fi,'')='',true, date(v.sys_dtcreated) between date(@fi) and date(@ff)  )
+            and if(ifnull(@ma,'')='',true, date(v.sys_dtcreated) between date(date_sub(now(),interval @ma month)) and date(@ff)  )
+
+        group by cc.codigo,month(v.sys_dtcreated),year(v.sys_dtcreated),c.sys_pk
+        order by v.fecha
+        ")
+        
+        ref ventas = dbr.list(db,sql,params)
+
+        return ventas
+    }
+    //#endregion
+
+    //=================================INICIO==========================================
+    @cFactura = 4
+    @cNotaCredito = 5
+    @cTicket = 6
+    @cRemision = 3
+    @ano_mayor_a= 1990
+    @default_table_name = "st_cliente_vmcc"
+
+    frombatch=isset("@batch_context")
+    if frombatch
+    {
+        ref args=@@(@batch_context,"&params")
+        ref db = @("&database")
+        do batch.v12.grant(@_action_id)
+    }
+    else
+    {
+        ref args=commandline("=")
+        ref db = dbr.open(@@(args,"$qn"))
+    }
+    
+    
+    @_sql_create_table = "
+    CREATE TABLE IF NOT EXISTS `#<tablename>` 
+    (
+        `sys_guid` VARCHAR(32) NOT NULL,
+        `sys_dtcreated` DATETIME NOT NULL /*!50605 DEFAULT CURRENT_TIMESTAMP */ COMMENT 'Fecha de creación del registro de estadística',
+        `sys_timestamp` DATETIME NOT NULL /*!50605 DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP */ COMMENT 'Fecha de actualización de la estadística',
+        `cc` VARCHAR(10) NOT NULL COMMENT 'Código de centro de consumo',
+        `divisa` VARCHAR(10) NOT NULL COMMENT 'Código de la divisa del producto (todos los importes en esta divisa)',
+        `ano` INT(11) DEFAULT 0 COMMENT 'Año al que corresponde la estadística',
+        `mes` INT(11) DEFAULT 0 COMMENT 'Mes al que corresponde la estadística',
+        `cod_cliente` VARCHAR(32) NOT NULL COMMENT 'Código del cliente',
+        `nombre` VARCHAR(150) NOT NULL COMMENT 'nombre del cliente',
+        `ventas` DECIMAL(19,8) DEFAULT 0 COMMENT 'Importe de ventas brutas (sin descontar devoluciones)',
+        `devoluciones`  DECIMAL(19,8) DEFAULT 0 COMMENT 'Importe de las devoluciones',
+        `op_sf` INT(11) DEFAULT 0 COMMENT 'Total de operaciones que no fueron facturas (tickets y remisiones no cancelados, independientemente si están facturados o no)',
+        `op_fac` INT(11) DEFAULT 0 COMMENT  'Total de facturas no canceladas',
+
+        KEY `cc` (`cc`),
+        KEY `ano` (`ano`),
+        KEY `mes` (`mes`),
+        KEY `cod_cliente` (`cod_cliente`),
+        UNIQUE KEY `uk_vmcc` (`cc`,`ano`,`mes`,`cod_cliente`)
+    ) 
+    ENGINE=InnoDB
+    DEFAULT CHARSET=latin1
+    COLLATE='latin1_swedish_ci'
+    ;"
+
+    if trim(@@(args,"$ff")) == ""{args<"ff">:date_str(now(),"yyyy-MM-dd")}
+    if trim(@@(args,"$ma")) =="" && trim(@@(args,"$fi")) ==""{do rise_error(99,"Falta el parámetro 'ma' or 'fi'")}
+    if trim(@@(args,"$ma")) !=""
+    {
+        if trim(@@(args,"$fi")) !="" {do rise_error(99,"Solo puede indicar 1 párametro a al vez 'ma' o 'fi' ")}
+    }
+
+    do Log("> Verificando tabla de estadistica")
+
+    do EnsureStatTable(db)
+    do Log("> Iniciando proceso de extracción de ventas")
+    ref ventas=_extractVentas(db,args)
+    do Log("> Iniciando inserción de estadisticas")
+    do InsertStats(db,args,ventas)
+    do Log("> Fin del del proceso")
+
+    exception
+    {
+        code = last_error_code()
+        error = last_error()
+
+        if isset("db")
+        {
+            if dbr.in_transaction(db){ do dbr.rollback(db) }
+            if not(isset("@batch_context")) { do dbr.close(db) }
+        }
+        
+        if not(isset("@batch_context")){do PrintError(error)}
+        else{do Log(error) }
+    }
+}
