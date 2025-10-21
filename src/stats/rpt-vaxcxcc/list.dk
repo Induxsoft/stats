@@ -98,14 +98,14 @@ module ""
             {
                 div(class="row")
                 {
-                    div(class="col-md-1 col-lg-1 col-sm-6")
+                    div(class="col-md-2 col-lg-1 col-sm-6")
                     {
                         label(class="" "for"=""){"Año inicial:"}
                         #!
                         do uie.dbSelect(sel_anios)
                         #$
                     }   
-                    div(class="col-md-1 col-lg-1 col-sm-6")
+                    div(class="col-md-2 col-lg-1 col-sm-6")
                     {
                         label(class="" "for"=""){"Año final:"}
                         #!
@@ -136,7 +136,7 @@ module ""
                         do uie.dbSelect(sel_cc)
                         #$
                     }
-                    div(class="col-md-1 mt-4")
+                    div(class="col-md-1 col-sm-6 mt-4")
                     {
                         button(class="btn btn-primary induxsoft-corners" type="submit" id=""){$"Aplicar"}
                     }
@@ -156,12 +156,13 @@ module ""
                     {
                         tr
                         {
-                            th{"Código"}
-                            th{"Nombre"}
+                            // th{"Código"}
+                            th{"Cliente"}
                             th{"Tipo cliente"}
-                            th{"Agente"}
-                            th{"CC"}
+                            // th{"Agente"}
+                            th{"C. consumo"}
                             #!
+                            colspan_total= 3
                             for i = ano_i ; i <= ano_f
                             {
                                 #$
@@ -175,16 +176,17 @@ module ""
                     {
                         #!
                         ref totales=record.create()
+                        do SetRecordAnio(totales,ano_i,ano_f)
                         for i = 0; i < @count(data)
                         {
                             ref dt=@item(data,i)
                             #$
                             tr
                             {
-                                td{"#<@@(dt,'$cod_cliente')>"}
-                                td{"#<@@(dt,'$nombre')>"}
+                                // td{"#<@@(dt,'$cod_cliente')>"}
+                                td{"#<@@(dt,'$cod_cliente') +' - '+@@(dt,'$nombre')>"}
                                 td{"#<@@(dt,'$tipo_cliente')>"}
-                                td{"#<@@(dt,'$agente')>"}
+                                // td{"#<@@(dt,'$agente')>"}
                                 td{"#<@@(dt,'$desc_cc')>"}
                                 #!
                                 total= 0
@@ -200,10 +202,12 @@ module ""
                                 td(class="text-end"){"#<number_format(total)>"}
                             }
                         }
+                        
                         #$
                         tr
                         {
-                            td(class="fw-bold" colspan="5"){"Totales:"}
+                            #$
+                            td(class="fw-bold" colspan="#<colspan_total>"){"Totales:"}
                             #!
                             ref ltotales=list.create_from_fields(totales)
                             _total= 0
@@ -215,7 +219,7 @@ module ""
                                 #$
                                 td(class="text-end fw-bold"){"#<number_format(total)>"}
                             }
-                            td(class="text-end fw-bold"){"#<number_format(_total)>"}
+                            td(class="text-end fw-bold" ){"#<number_format(_total)>"}
                         }
                     }
                 }

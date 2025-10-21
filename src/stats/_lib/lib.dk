@@ -15,4 +15,11 @@ module "Funciones de propósito general"
     {
         return round(value,@DECIMAL_PRECISION)
     }
+    SetRecordAnio::&record,ano_i,ano_f
+    {
+        for j = ano_i ; j <= ano_f
+        {
+            record<str(j)>: 0
+        }
+    }
 }

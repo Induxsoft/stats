@@ -91,13 +91,7 @@ program ""
     function InsertStats(&db,&params,&ventas)
     {
         tablename=GetStatTable(db)
-        divisa_pred=parse.num(dbr.vars.getd(db,"FXCA013","1"))
-        params<"divisa">:divisa_pred
-        
-        ref divisa=dbr.rec(db,"select codigo,ifnull(tcambio,1)tcambio from divisa where sys_pk=@divisa",params)
-        tcambio=@@(divisa,"#tcambio")
-        if tcambio < 1{tcambio= 1}
-
+    
         length = list.count(ventas)
         if length < 1 
         {
@@ -129,7 +123,6 @@ program ""
                             SELECT COUNT(*) from
                             venta v WHERE v.ICConsumo=@pkcc
                             AND v.ICliente=@pkcliente 
-                            AND v.IDivisa=@pkdivisa
                             AND MONTH(v.Sys_DTCreated)=@mes
                             AND YEAR(v.Sys_DTCreated)=@ano
                             AND v.documento IN (#<@cFactura>)
@@ -137,11 +130,6 @@ program ""
                         )op_fac"
             
             ref totales=dbr.rec(db,ftext(sql),venta)
-            if divisa_pred != @@(venta,"#pkdivisa")
-            {
-                venta<"devoluciones">: @@(venta,"#devoluciones") * tcambio
-                venta<"subtotal">: @@(venta,"#subtotal") * tcambio
-            }
 
             new data_stats
             {
@@ -180,15 +168,21 @@ program ""
     function _extractVentas(&db,&params)
     {
         condition = @@(params,"$condition")
-        documentos=@@(params,"$documentos")
 
+        divisa_pred=parse.num(dbr.vars.getd(db,"FXCA013","1"))
+        params<"divisa">:divisa_pred
+        
+        ref divisa=dbr.rec(db,"select codigo,ifnull(tcambio,1)tcambio from divisa where sys_pk=@divisa",params)
+        tcambio=@@(divisa,"#tcambio")
+        if tcambio < 1{tcambio= 1}
+        
         sql = ftext("
         select
             cc.sys_pk pkcc,
             cc.codigo as `cconsumo`,
             date_format(v.fecha,'%y-%m-%d') as fecha,
             count(v.sys_pk) as opventas,
-            sum(if(v.Documento=#<@cNotaCredito>,0,v.subtotal - (v.descuento1 + v.descuento2)))subtotal,
+            sum(if(v.Documento=#<@cNotaCredito>,0,(v.subtotal - (v.descuento1 + v.descuento2)) * (v.tipocambio/#<tcambio>) ) )subtotal,
 				year(v.sys_dtcreated) ano,
 				month(v.sys_dtcreated) mes,
 				c.codigo as cod_cliente,
@@ -196,7 +190,7 @@ program ""
 				c.nombre as nombre_cliente,
 				dp.codigo as cod_divisa,
 				dp.sys_pk as pkdivisa,
-				ifnull(sum(if(v.Documento=#<@cNotaCredito>,v.subtotal - (v.descuento1 + v.descuento2),0)),0)devoluciones
+				ifnull(sum(if(v.Documento=#<@cNotaCredito>,(v.subtotal - (v.descuento1 + v.descuento2)) * (v.tipocambio/#<tcambio>),0)),0)devoluciones
         from venta v
             inner join divisa dp on v.idivisa = dp.sys_pk
             inner join cconsumo cc on v.icconsumo = cc.sys_pk
