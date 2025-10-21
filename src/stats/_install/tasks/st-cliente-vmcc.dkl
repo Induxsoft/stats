@@ -188,7 +188,7 @@ program ""
             cc.codigo as `cconsumo`,
             date_format(v.fecha,'%y-%m-%d') as fecha,
             count(v.sys_pk) as opventas,
-            sum(v.subtotal - (v.descuento1 + v.descuento2))subtotal,
+            sum(if(v.Documento=#<@cNotaCredito>,0,v.subtotal - (v.descuento1 + v.descuento2)))subtotal,
 				year(v.sys_dtcreated) ano,
 				month(v.sys_dtcreated) mes,
 				c.codigo as cod_cliente,
@@ -196,16 +196,7 @@ program ""
 				c.nombre as nombre_cliente,
 				dp.codigo as cod_divisa,
 				dp.sys_pk as pkdivisa,
-				(
-					select
-					 ifnull(sum(ifnull(vd.subtotal,0) - (ifnull(vd.descuento1,0) + ifnull(vd.descuento2,0))),0) 
-					from venta vd 
-					inner join divisa d on vd.idivisa=d.sys_pk
-					where vd.documento=#<@cNotaCredito> and vd.icconsumo=cc.sys_pk
-					and month(vd.sys_dtcreated)=month(v.sys_dtcreated)
-					and year(vd.sys_dtcreated)=year(v.sys_dtcreated)
-					and vd.icliente=c.sys_pk
-				)devoluciones
+				ifnull(sum(if(v.Documento=#<@cNotaCredito>,v.subtotal - (v.descuento1 + v.descuento2),0)),0)devoluciones
         from venta v
             inner join divisa dp on v.idivisa = dp.sys_pk
             inner join cconsumo cc on v.icconsumo = cc.sys_pk
@@ -213,10 +204,9 @@ program ""
             inner join tipocliente tc on c.tipo=tc.sys_pk
         where true 
             and IFNULL(c.sys_deleted,0)=0
-            and v.documento in (#<@cTicket>,#<@cRemision>,#<@cFactura>)
+            and v.documento in (#<@cTicket>,#<@cRemision>,#<@cFactura>,#<@cNotaCredito>)
             and v.statusadministrativo <> 99
-            and v.statusfacturacion <> 3
-            and if(v.Documento=#<@cFactura>,TRUE,v.statusfacturacion <> 3)
+            and if(v.Documento=#<@cFactura> or v.Documento=#<@cNotaCredito>,TRUE,v.statusfacturacion <> 3)
             and year(v.sys_dtcreated) > #<@ano_mayor_a>
 
             and if(ifnull(@cc,'')='',true,cc.codigo=@cc)

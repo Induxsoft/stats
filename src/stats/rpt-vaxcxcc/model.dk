@@ -4,31 +4,34 @@ module ":statvmcc"
 {
     @default_table_name = "st_cliente_vmcc"
     @list_query="SELECT distinct
-        st.cod_cliente,st.nombre,
-        -- st.ano,st.mes,
-        ifnull(a.Nombre,'') agente,
-        cc.Descripcion as desc_cc,
-        tc.Descripcion tipo_cliente,
-        tc.sys_pk as tc,
-        ifnull(a.sys_pk,-1) as iagente,
-        cc.sys_pk as cc,
-        c.sys_pk as pkcliente
-        from #<@tablename> st
-        INNER JOIN cliente c ON st.cod_cliente=c.Codigo
-        INNER JOIN tipocliente tc ON c.Tipo=tc.Sys_PK
-        LEFT JOIN agente a ON c.Agente=a.Sys_PK
-        INNER JOIN cconsumo cc ON st.cc=cc.Codigo
-        WHERE if(IFNULL(@tc,-1)=-1,TRUE, tc.Sys_PK=@tc )
-        AND if(IFNULL(@agente,-1)=-1,TRUE, a.Sys_PK=@agente )
-        AND if(IFNULL(@cc,-1)=-1,TRUE, cc.Sys_PK=@cc )
-        AND st.ano >= @ano_i and st.ano <= @ano_f
+            st.cod_cliente,st.nombre,
+            -- st.ano,st.mes,
+            ifnull(a.Nombre,'') agente,
+            cc.Descripcion as desc_cc,
+            tc.Descripcion tipo_cliente,
+            tc.sys_pk as tc,
+            ifnull(a.sys_pk,-1) as iagente,
+            cc.sys_pk as cc,
+            c.sys_pk as pkcliente
+            from #<@tablename> st
+            INNER JOIN cliente c ON st.cod_cliente=c.Codigo
+            INNER JOIN tipocliente tc ON c.Tipo=tc.Sys_PK
+            LEFT JOIN agente a ON c.Agente=a.Sys_PK
+            INNER JOIN cconsumo cc ON st.cc=cc.Codigo
+            WHERE if(IFNULL(@tc,-1)=-1,TRUE, tc.Sys_PK=@tc )
+            AND if(IFNULL(@agente,-1)=-1,TRUE, a.Sys_PK=@agente )
+            AND if(IFNULL(@cc,-1)=-1,TRUE, cc.Sys_PK=@cc )
+            AND st.ano >= @ano_i and st.ano <= @ano_f
         GROUP BY
-        -- st.ano,
-        tc.sys_pk,a.sys_pk,cc.sys_pk,c.sys_pk
+            -- st.ano,
+            tc.sys_pk,
+            a.sys_pk,
+            cc.sys_pk,
+            c.sys_pk
         ORDER BY st.nombre asc;"
 
     @query_saldo="SELECT 
-        SUM(st.ventas)ventas,
+        SUM(st.ventas) - SUM(st.devoluciones) ventas,
         SUM(st.devoluciones)devoluciones,
         st.op_sf,st.op_fac ,st.ano,st.mes
         from #<@tablename> st 
